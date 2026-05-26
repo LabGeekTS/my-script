@@ -7,7 +7,6 @@ if ($env:PROCESSOR_ARCHITECTURE -eq 'x86' -and $env:PROCESSOR_ARCHITEW6432 -eq '
 # Parameter definitions
 $LocalFolder  = "$env:USERPROFILE\Pictures\CorporateSlideshow"
 $SourceFolder = "\\domain.local\netlogon\LockScreens" # <--- Change this to your central network share path
-$MaxImagesToPool = 5 # Number of rotating images in the local slideshow pool
 
 # 2. Synchronize and rotate the local image pool from the network share
 if (Test-Path $SourceFolder) {
@@ -21,12 +20,9 @@ if (Test-Path $SourceFolder) {
         # Purge existing slideshow images to refresh the pool entirely
         Remove-Item -Path "$LocalFolder\*" -Force -ErrorAction SilentlyContinue
         
-        # Select a random subset of images to act as the current active slideshow batch
-        $SelectedImages = $Images | Get-Random -Count $MaxImagesToPool
-        
-        # Copy the selected batch locally with clean incremented naming
+        # Copy ALL found images locally with clean incremented naming
         $Counter = 1
-        foreach ($Img in $SelectedImages) {
+        foreach ($Img in $Images) {
             $TargetName = "Slide_$Counter$($Img.Extension)"
             Copy-Item -Path $Img.FullName -Destination "$LocalFolder\$TargetName" -Force
             $Counter++
@@ -50,7 +46,7 @@ if (Test-Path $SourceFolder) {
         # 4. Optional Native Fine-Tuning: Disable advanced options to maximize screen slideshow reliability
         New-ItemProperty -Path $SlideReg -Name "SlideShowMode" -Value 1 -PropertyType DWord -Force | Out-Null
         
-        Write-Host "Success! Native Windows Slideshow configured with $MaxImagesToPool active corporate assets." -ForegroundColor Green
+        Write-Host "Success! Native Windows Slideshow configured with $($Images.Count) active corporate assets." -ForegroundColor Green
     } else {
         Write-Warning "No images found in the central folder!"
     }
