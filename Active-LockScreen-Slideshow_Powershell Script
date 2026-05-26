@@ -1,0 +1,59 @@
+# 1. Force 64-bit execution context to ensure proper registry paths mapping
+if ($env:PROCESSOR_ARCHITECTURE -eq 'x86' -and $env:PROCESSOR_ARCHITEW6432 -eq 'AMD64') {
+    & "$env:SystemRoot\SysNative\WindowsPowerShell\v1.0\powershell.exe" -File $MyInvocation.MyCommand.Path
+    Exit
+}
+
+# Parameter definitions
+$LocalFolder  = "$env:USERPROFILE\Pictures\CorporateSlideshow"
+$SourceFolder = "\\domain.local\netlogon\LockScreens" # <--- Change this to your central network share path
+$MaxImagesToPool = 5 # Number of rotating images in the local slideshow pool
+
+# 2. Synchronize and rotate the local image pool from the network share
+if (Test-Path $SourceFolder) {
+    $Images = Get-ChildItem -Path $SourceFolder -Include *.jpg, *.jpeg, *.png -File -Recurse
+    
+    if ($Images) {
+        if (-not (Test-Path $LocalFolder)) {
+            New-Item -ItemType Directory -Path $LocalFolder -Force | Out-Null
+        }
+        
+        # Purge existing slideshow images to refresh the pool entirely
+        Remove-Item -Path "$LocalFolder\*" -Force -ErrorAction SilentlyContinue
+        
+        # Select a random subset of images to act as the current active slideshow batch
+        $SelectedImages = $Images | Get-Random -Count $MaxImagesToPool
+        
+        # Copy the selected batch locally with clean incremented naming
+        $Counter = 1
+        foreach ($Img in $SelectedImages) {
+            $TargetName = "Slide_$Counter$($Img.Extension)"
+            Copy-Item -Path $Img.FullName -Destination "$LocalFolder\$TargetName" -Force
+            $Counter++
+        }
+        
+        # 3. Configure Windows Native Lock Screen Engine via Current User Registry
+        $LockReg  = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Lock Screen"
+        $SlideReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Lock Screen\Slideshow"
+        
+        if (-not (Test-Path $SlideReg)) { New-Item $SlideReg -Force | Out-Null }
+        
+        # ChoosePictureOption: 1 = Picture, 3 = Slideshow, 4 = Windows Spotlight (Bing)
+        # Setting it to 3 triggers Windows' native organic fade transitions
+        New-ItemProperty -Path $LockReg -Name "ChoosePictureOption" -Value 3 -PropertyType DWord -Force | Out-Null
+        New-ItemProperty -Path $LockReg -Name "SlideshowEnabled" -Value 1 -PropertyType DWord -Force | Out-Null
+        
+        # Map Windows Native Slideshow Library directly to our managed local folder
+        # DirectoryPaths requires a Multi-String (REG_MULTI_SZ) array configuration
+        New-ItemProperty -Path $SlideReg -Name "DirectoryPaths" -Value @($LocalFolder) -PropertyType MultiString -Force | Out-Null
+        
+        # 4. Optional Native Fine-Tuning: Disable advanced options to maximize screen slideshow reliability
+        New-ItemProperty -Path $SlideReg -Name "SlideShowMode" -Value 1 -PropertyType DWord -Force | Out-Null
+        
+        Write-Host "Success! Native Windows Slideshow configured with $MaxImagesToPool active corporate assets." -ForegroundColor Green
+    } else {
+        Write-Warning "No images found in the central folder!"
+    }
+} else {
+    Write-Error "Could not connect to the network share path!"
+}
