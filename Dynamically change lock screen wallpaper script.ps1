@@ -6,7 +6,7 @@ if ($env:PROCESSOR_ARCHITECTURE -eq 'x86' -and $env:PROCESSOR_ARCHITEW6432 -eq '
 
 # Parameter definitions
 $LocalFolder  = "C:\Windows\Web\Screen"
-$SourceFolder = "\\sizin-domain.local\netlogon\LockScreens" # <--- Change this to your central network share path
+$SourceFolder = "\\domain.local\netlogon\LockScreens" # <--- Change this to your central network share path
 
 # 2. Select a random image from the network folder
 if (Test-Path $SourceFolder) {
@@ -44,7 +44,7 @@ if (Test-Path $SourceFolder) {
 
         # PersonalizationCSP configurations strictly required for Windows 11 24H2 builds
         New-ItemProperty -Path $CSPPath -Name "LockScreenImagePath" -Value $LocalPath -PropertyType String -Force | Out-Null
-        New-ItemProperty -Path $CSPPath -Name "LockScreenImageUrl" -Value $LocalPath -PropertyType String -Force | Out-Null
+        New-ItemProperty -Path $CSPPath -Name "LockScreenImageUrl" -Value $LocalPath -Type String -Force | Out-Null
         New-ItemProperty -Path $CSPPath -Name "LockScreenImageStatus" -Value 1 -PropertyType DWord -Force | Out-Null
 
         # 4. Clear the stubborn Windows 11 System Cache directory (SystemData)
@@ -58,8 +58,15 @@ if (Test-Path $SourceFolder) {
             Get-ChildItem -Path $SystemDataPath -Recurse -Filter "LockScreen_*" | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
             Get-ChildItem -Path $SystemDataPath -Recurse -Filter "img100*" | Remove-Item -Force -ErrorAction SilentlyContinue
         }
+
+        # 5. NEW: Force LogonUI to refresh to apply the new image instantly without user interaction
+        # If the computer is currently on the lock screen, this will force it to instantly redraw with the new background
+        $LogonProcess = Get-Process -Name LogonUI -ErrorAction SilentlyContinue
+        if ($LogonProcess) {
+            Stop-Process -Name LogonUI -Force -ErrorAction SilentlyContinue
+        }
         
-        Write-Host "Success! Selected [$($RandomImage.Name)] from network and applied successfully." -ForegroundColor Green
+        Write-Host "Success! Selected [$($RandomImage.Name)] and forced lock screen visual refresh." -ForegroundColor Green
     } else {
         Write-Warning "No images found in the central folder!"
     }
